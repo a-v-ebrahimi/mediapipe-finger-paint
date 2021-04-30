@@ -5,13 +5,13 @@ import math
 import numpy as np
 from random import randrange
 
-cac_logo = cv2.imread('CAC_LOGO_216.png', cv2.IMREAD_UNCHANGED)
+cac_logo = cv2.imread('banner.png', cv2.IMREAD_UNCHANGED)
 thumb_pointing = cv2.imread('thumb_pointing.png', cv2.IMREAD_UNCHANGED)
 
 cap = cv2.VideoCapture(0)
 
 mpHands = mp.solutions.hands
-hands = mpHands.Hands(min_detection_confidence=0.7, max_num_hands=2)
+hands = mpHands.Hands(min_detection_confidence=0.7, max_num_hands=1)
 mpDraw = mp.solutions.drawing_utils
 
 pTime = 0
@@ -23,9 +23,11 @@ penDownZoneHand = -1
 sketch = []
 sketches = []
 sketchColor = (0, 0, 200)
+clearCounter = 0
 
 fingerTips = [4, 8, 12, 16, 20]
 lastSketchX, lastSketchY = 0, 0
+lastFingerPos = {}
 
 
 def overlay_transparent(background, overlay, x, y):
@@ -89,7 +91,8 @@ def paint_sketch(sketch_number, sketch_array):
             if t > 0:
                 p = (int(res[t - 1][0]), int(res[t - 1][1]))
                 pnt = (int(res[t][0]), int(res[t][1]))
-                color = (250, 250, 250 - sketch_number * 20)  # res[t][2]
+                # color = (250, 250, 250 - sketch_number * 20)  # res[t][2]
+                color = (50, 0, 20)  # res[t][2]
                 # cv2.circle(img, pnt, 4, (255, 255, 255), cv2.FILLED)
                 cv2.line(img, p, pnt, color, thickness=2)
                 cv2.line(img, (w - p[0], p[1]), (w - pnt[0], pnt[1]), color, thickness=2)
@@ -100,7 +103,7 @@ def paint_sketch(sketch_number, sketch_array):
 while True:
     success, img = cap.read()
     img = cv2.flip(img, 1)
-    overlay_transparent(img, cac_logo, 1080, 20)
+    overlay_transparent(img, cac_logo, 2, 540)
     # overlay_transparent(img, thumb_pointing, 0, 0)
     h, w, c = img.shape
     cv2.rectangle(img, (0, 0), (w, h), (100, 30, 60, 100))
@@ -111,6 +114,7 @@ while True:
         for handId, handLms in enumerate(results.multi_hand_landmarks):
             for id, lm in enumerate(handLms.landmark):
                 cx, cy = int(lm.x * w), int(lm.y * h)
+                lastFingerPos[id] = (cx, cy)
                 if id in fingerTips:
                     finger = fingerTips.index(id)
                     lm_prev = handLms.landmark[id - 1]
@@ -137,14 +141,20 @@ while True:
                             sketch.append((cx, cy, sketchColor))
                     if id == 4 and cx < lastSketchX - 20 and penDown == 1 and len(results.multi_hand_landmarks) == 1:
                         sketchColor = (randrange(255), randrange(255), randrange(255))
-                    if id == 12 and cy < lastSketchY + 20 and penDown == 1 and len(results.multi_hand_landmarks) == 1:
-                        sketch = []
-                        sketches = []
-                    if id == 20 and abs(cx - lastSketchX) > 50 and cy < lastSketchY + 20:
+                    if id == 12 and cy < lastSketchY + 20 and len(results.multi_hand_landmarks) == 1:
+                        clearCounter = clearCounter + 1
+                        if clearCounter == 16:
+                            clearCounter = 0
+                            sketch = []
+                            sketches = []
+                            penDown = 0
+                    if id == 20 and abs(cx - lastSketchX) > 50 and cy < lastSketchY + 20 and 4 in lastFingerPos and \
+                            lastFingerPos[12][1] - lastFingerPos[id][1] > 30:
                         if time.time() - lastPenTime > 2:
                             lastPenTime = time.time()
                             if penDown == 1:
                                 penDown = 0
+                                clearCounter = 0
                                 if len(sketch) > 10:
                                     sketches.append(sketch)
                                     sketch = []
@@ -152,10 +162,13 @@ while True:
                                 penDown = 1
 
             mpDraw.draw_landmarks(img, handLms, mpHands.HAND_CONNECTIONS)
-    cv2.putText(img, f"PenDown : {penDown}", (80, 80), cv2.FONT_HERSHEY_PLAIN, 2,
+    cv2.putText(img, f"Pen Down : {penDown}", (30, 50), cv2.FONT_HERSHEY_PLAIN, 2,
                 (255, 255, 255), 2)
-    cv2.putText(img, f"Segments : {len(sketches)}", (80, 110), cv2.FONT_HERSHEY_PLAIN, 1,
+    cv2.putText(img, f"Segments : {len(sketches)}", (30, 80), cv2.FONT_HERSHEY_PLAIN, 2,
                 (255, 255, 255), 2)
+    if clearCounter > 0:
+        cv2.putText(img, f"Clear? : {clearCounter}", (30, 110), cv2.FONT_HERSHEY_PLAIN, 1.5,
+                    (0, 0, 255), 2)
     for skn, sk in enumerate(sketches):
         paint_sketch(skn, sk)
     paint_sketch(0, sketch)
@@ -164,9 +177,7 @@ while True:
     fps = 1 / (cTime - pTime)
     pTime = cTime
 
-    cv2.putText(img, f"AR Finger Paint", (870, 200), cv2.FONT_HERSHEY_PLAIN, 3, (255, 25, 75), 2)
-    cv2.putText(img, f"(C) 2021 Control Adad Software", (980, 230), cv2.FONT_HERSHEY_PLAIN, 1, (200, 90, 0), 2)
-    cv2.putText(img, f"FPS : {int(fps)}", (20, 670), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 2)
+    cv2.putText(img, f"FPS : {int(fps)}", (1150, 50), cv2.FONT_HERSHEY_PLAIN, 1.5, (110, 110, 110), 2)
 
     cv2.imshow("Image", img)
     cv2.waitKey(1)
